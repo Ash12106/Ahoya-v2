@@ -1,0 +1,54 @@
+[project]
+name = "ahoya-api"
+version = "0.1.0"
+description = "FastAPI foundation for the Ahoya community platform"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi==0.165.0",
+  "pydantic-settings==2.16.3",
+  "pymongo==4.20.1",
+  "uvicorn==0.54.0",
+]
+
+[dependency-groups]
+dev = [
+  "httpx2==2.16.2",
+  "mypy==2.4.1",
+  "pip-audit==2.10.1",
+  "pytest==9.2.0",
+  "pytest-asyncio==1.5.0",
+  "pytest-cov==7.1.0",
+  "ruff==0.17.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=app --cov-report=term-missing --cov-fail-under=80 -m 'not integration'"
+markers = ["integration: requires a running MongoDB 7 instance"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["app"]
+plugins = ["pydantic.mypy"]
