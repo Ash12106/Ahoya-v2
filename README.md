@@ -21,6 +21,8 @@ docker compose up --build
 
 The web app is at `http://localhost:3000`; API health is at `http://localhost:8000/health` and Mongo readiness is at `http://localhost:8000/health/db`. Compose binds both published ports to loopback. MongoDB 7.0.48 is available only on the private Compose network. If port 3000 is already in use, run `WEB_HOST_PORT=3001 CORS_ALLOWED_ORIGINS=http://localhost:3001 docker compose up --build` and open `http://localhost:3001`.
 
+The local API uses the Compose MongoDB by default. To connect it to an existing MongoDB, set `MONGODB_URI` and `DATABASE_NAME` in the root `.env`; Compose passes these only to the API. Keep `.env` untracked. For production, set `MONGODB_URI` in the Render dashboard environment for `ahoya-api`, not in GitHub Actions secrets.
+
 For API development without Compose:
 
 ```sh
