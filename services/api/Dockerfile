@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:0.13.9 AS uv
 
-FROM python:3.12.16-slim-bookworm AS dependencies
+FROM python:3.15.2-slim-bookworm AS dependencies
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -19,7 +19,7 @@ RUN uv sync --locked --group dev --no-install-project
 EXPOSE 8000
 CMD ["/app/.venv/bin/uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
-FROM python:3.12.16-slim-bookworm AS runtime
+FROM python:3.15.2-slim-bookworm AS runtime
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
