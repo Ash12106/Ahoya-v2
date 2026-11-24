@@ -1,4 +1,4 @@
-FROM node:24.22.3-bookworm-slim AS dependencies
+FROM node:26.13.0-bookworm-slim AS dependencies
 
 WORKDIR /app
 COPY apps/web/package.json apps/web/package-lock.json ./
@@ -10,14 +10,14 @@ ENV NODE_ENV=development
 EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
 
-FROM node:24.22.3-bookworm-slim AS builder
+FROM node:26.13.0-bookworm-slim AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY apps/web/. .
 RUN npm run build
 
-FROM node:24.22.3-bookworm-slim AS runner
+FROM node:26.13.0-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
