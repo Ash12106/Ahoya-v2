@@ -43,6 +43,7 @@ export function ProfileForm() {
   const [status, setStatus] = useState("Loading your profile settings.");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -170,6 +171,33 @@ export function ProfileForm() {
     }
   }
 
+  async function downloadAccountExport() {
+    setError(null);
+    setStatus("Preparing your account data download.");
+    setExporting(true);
+    try {
+      const response = await fetch("/api/account/export", { cache: "no-store" });
+      if (!response.ok) throw new Error("Export unavailable");
+      const blob = await response.blob();
+      const exportedData: unknown = JSON.parse(await blob.text());
+      if (typeof exportedData !== "object" || exportedData === null) {
+        throw new Error("Invalid export");
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = "ahoya-account-export.json";
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      setStatus("Your account data download is ready.");
+    } catch {
+      setError("Your account data could not be exported. Try again later.");
+      setStatus("Account data export failed.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   const collectionEnabled = settings?.date_of_birth_collection_enabled === true;
   const minimumAgeYears = settings?.minimum_age_years ?? 16;
   const notice = settings?.date_of_birth_consent_notice;
@@ -215,7 +243,8 @@ export function ProfileForm() {
       ) : null}
 
       {settings ? (
-        <form className="space-y-8" onSubmit={saveProfile}>
+        <>
+          <form className="space-y-8" onSubmit={saveProfile}>
           <div className="grid gap-6 sm:grid-cols-2">
           <div>
             <label className="mb-2 block text-sm font-medium" htmlFor="username">
@@ -386,7 +415,41 @@ export function ProfileForm() {
           >
             {saving ? "Saving…" : "Save profile"}
           </button>
-        </form>
+          </form>
+          <section
+            aria-labelledby="account-export-heading"
+            className="mt-10 border-t border-[#d4d4d1] pt-8"
+          >
+            <div className="max-w-2xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#a90000]">
+                Your data
+              </p>
+              <h2
+                className="mt-3 font-serif text-2xl font-medium tracking-[-0.03em] sm:text-3xl"
+                id="account-export-heading"
+              >
+                Take a copy with you.
+              </h2>
+              <p
+                className="mt-3 text-sm leading-6 text-[#51534f]"
+                id="account-export-description"
+              >
+                Download the account, profile, and consent records Ahoya stores for you. Any saved
+                date of birth and private contact details are included. Google account data is
+                managed by Google and is not part of this export.
+              </p>
+            </div>
+            <button
+              aria-describedby="account-export-description"
+              className="mt-5 rounded-none border border-[#151515] px-6 py-3 text-sm font-semibold text-[#151515] transition-colors hover:bg-[#151515] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a90000] disabled:cursor-wait disabled:opacity-60"
+              disabled={exporting}
+              onClick={() => void downloadAccountExport()}
+              type="button"
+            >
+              {exporting ? "Preparing download…" : "Download account data (JSON)"}
+            </button>
+          </section>
+        </>
       ) : null}
     </section>
   );

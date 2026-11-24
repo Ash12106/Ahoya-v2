@@ -4,7 +4,7 @@
 **Plan date:** 2026-11-24
 **Repository:** Ahoya v2, Phase 0 foundation
 
-**Implementation status:** The core sign-in/session and profile slice is implemented. Google sign-in and profile persistence have been confirmed by the user. The user selected a free self-declared 16+ age check instead of third-party verification. DOB collection remains disabled pending the privacy notice, encryption key and backup-retention details. Media, export, deletion and final security/privacy/accessibility reviews remain outstanding.
+**Implementation status:** The core sign-in/session and profile slice is implemented. A read-only JSON export now streams the authenticated user's stored account, profile, and consent records; media paths will be added with the media slice. Google sign-in and profile persistence have been confirmed by the user. The user selected a free self-declared 16+ age check instead of third-party verification. DOB collection remains disabled pending the privacy notice, encryption key and backup-retention details. Media, deletion, and final security/privacy/accessibility reviews remain outstanding.
 
 ## Roles
 

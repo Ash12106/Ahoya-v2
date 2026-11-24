@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
+from app.account.routes import router as account_router
 from app.auth.routes import router as auth_router
 from app.config import Settings
 from app.consents.routes import router as consents_router
@@ -109,6 +110,7 @@ def create_app(
     )
     app.include_router(health_router)
     app.include_router(auth_router)
+    app.include_router(account_router)
     app.include_router(consents_router)
     app.include_router(profiles_router)
     app.add_exception_handler(RequestValidationError, validation_error_handler)

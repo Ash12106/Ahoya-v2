@@ -48,4 +48,8 @@ test("profile API does not expose an unauthenticated account", async ({ request 
 
   expect(response.status()).toBe(401);
   expect(await response.json()).toMatchObject({ code: "UNAUTHENTICATED" });
+
+  const accountExport = await request.get("/api/account/export");
+  expect(accountExport.status()).toBe(401);
+  expect(await accountExport.json()).toMatchObject({ code: "UNAUTHENTICATED" });
 });

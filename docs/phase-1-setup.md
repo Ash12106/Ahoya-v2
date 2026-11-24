@@ -12,11 +12,12 @@ Phase 1 stores account and profile records in the configured MongoDB database. I
 | `POST` | `/v1/auth/sessions` | Web-service-only exchange of a signed assertion for a revocable API session |
 | `GET` | `/v1/auth/me` | Current account and profile-completion status, without DOB or derived age; profile completion requires an eligible DOB when the age gate is enabled |
 | `DELETE` | `/v1/auth/sessions/current` | Revoke the current API session |
+| `GET` | `/v1/account/export` | Stream the signed-in user's account, profile, and consent records as a private JSON download |
 | `GET` | `/v1/profiles/me` | Read the signed-in user's profile from MongoDB |
 | `PATCH` | `/v1/profiles/me` | Save a unique username, display name, and cover description; when enabled, also requires consented self-declared DOB meeting the 16+ minimum |
 | `POST` | `/v1/consents` | Record versioned DOB consent before accepting DOB data |
 
-Browser code calls the Next.js BFF (`/api/profile`, `/api/consents`). It never receives the API bearer token. `/v1/auth/sessions` accepts only a short-lived EdDSA assertion from the web service and must not be called by browser JavaScript.
+Browser code calls the Next.js BFF (`/api/profile`, `/api/consents`, `/api/account/export`). It never receives the API bearer token. `/v1/auth/sessions` accepts only a short-lived EdDSA assertion from the web service and must not be called by browser JavaScript. The export endpoint is owner-scoped, streams directly to the BFF, sets `Cache-Control: private, no-store`, and does not persist an export object.
 
 Usernames are required during profile setup, stored in lowercase, and unique across profiles. Use 3–24 ASCII letters, numbers, or underscores. MongoDB enforces uniqueness, including concurrent profile updates; a conflict returns HTTP `409` with code `USERNAME_UNAVAILABLE`. After the initial username selection, users can change it at most twice in a rolling seven-day period; further changes return `429 USERNAME_CHANGE_LIMIT` and a `Retry-After` header.
 
@@ -75,4 +76,4 @@ When `MONGODB_URI` points to Atlas, the API runs the same preflight against the 
 
 ## Not enabled yet
 
-Google sign-in requires the OAuth credentials and signing key pair above. DOB registration remains disabled until the notice, encryption and backup-retention gates are met. No identity-provider integration is used for the age check. R2 media requires a Cloudflare account ID, private bucket name, and bucket-scoped access key/secret in local or deployment secrets. No sample profiles or age claims are fabricated. Account export/deletion and the re-authentication flow are still in implementation and are not advertised as available endpoints in this slice.
+Google sign-in requires the OAuth credentials and signing key pair above. DOB registration remains disabled until the notice, encryption and backup-retention gates are met. No identity-provider integration is used for the age check. R2 media requires a Cloudflare account ID, private bucket name, and bucket-scoped access key/secret in local or deployment secrets. No sample profiles or age claims are fabricated. The JSON export currently includes records stored for the account, profile, and consent history; active media paths will be included after the media slice exists. Account deletion and the re-authentication flow are still in implementation and are not advertised as available endpoints.

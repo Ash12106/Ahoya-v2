@@ -11,8 +11,33 @@ from fastapi.testclient import TestClient
 from pymongo import AsyncMongoClient
 from pymongo.errors import DuplicateKeyError
 
+from app.account.routes import _consent_export, _history_timestamps, _timestamp
 from app.config import Settings
 from app.main import create_app
+
+
+class FakeCursor:
+    def __init__(self, documents: list[dict[str, Any]]) -> None:
+        self.documents = documents
+        self.index = 0
+        self.closed = False
+
+    def sort(self, field: str, direction: int) -> "FakeCursor":
+        self.documents.sort(key=lambda document: document.get(field), reverse=direction < 0)
+        return self
+
+    def __aiter__(self) -> "FakeCursor":
+        return self
+
+    async def __anext__(self) -> dict[str, Any]:
+        if self.index >= len(self.documents):
+            raise StopAsyncIteration
+        document = self.documents[self.index]
+        self.index += 1
+        return document
+
+    async def close(self) -> None:
+        self.closed = True
 
 
 class FakeCollection:
@@ -80,6 +105,20 @@ class FakeCollection:
             if matched:
                 return dict(document)
         return None
+
+    def find(
+        self,
+        query: dict[str, Any],
+        projection: dict[str, int] | None = None,
+    ) -> FakeCursor:
+        del projection
+        return FakeCursor(
+            [
+                dict(document)
+                for document in self.documents.values()
+                if all(document.get(name) == value for name, value in query.items())
+            ]
+        )
 
     async def update_one(
         self,
@@ -221,6 +260,10 @@ def test_session_profile_consent_and_logout_use_server_side_state() -> None:
         assert (
             web.get("/v1/auth/me", headers=headers).json()["account"]["profile_complete"] is False
         )
+        empty_export = web.get("/v1/account/export", headers=headers)
+        assert empty_export.status_code == 200
+        assert empty_export.json()["profile"] is None
+        assert empty_export.json()["consents"] == []
 
         consent = web.post(
             "/v1/consents",
@@ -260,6 +303,61 @@ def test_session_profile_consent_and_logout_use_server_side_state() -> None:
         assert read_back.json()["profile"]["date_of_birth"] == "1998-03-14"
         assert read_back.json()["profile"]["contact_email"] == "ash@example.com"
         assert read_back.json()["profile"]["phone_number"] == "+919876543210"
+
+        current_user = next(iter(mongo.database["users"].documents.values()))
+        current_user["created_at"] = datetime(2026, 1, 1)
+        first_consent = next(iter(mongo.database["consent_events"].documents.values()))
+        first_consent["consented_at"] = datetime(2026, 1, 2)
+        mongo.database["consent_events"].documents["second-consent"] = {
+            "user_id": current_user["_id"],
+            "purpose": "self_declared_date_of_birth",
+            "scope": ["date_of_birth_storage"],
+            "notice_version": "test-v2",
+            "consented_at": datetime(2026, 1, 3),
+            "withdrawn_at": datetime(2026, 1, 4),
+        }
+        mongo.database["users"].documents["another-user"] = {
+            "_id": "another-user",
+            "status": "active",
+            "google_subject": "another-google-subject",
+            "created_at": datetime.now(UTC),
+        }
+        mongo.database["profiles"].documents["another-profile"] = {
+            "user_id": "another-user",
+            "username": "another_person",
+            "display_name": "Another Person",
+        }
+        mongo.database["consent_events"].documents["another-consent"] = {
+            "user_id": "another-user",
+            "purpose": "self_declared_date_of_birth",
+            "scope": ["other_personal_data"],
+            "notice_version": "another-user-notice",
+            "consented_at": datetime.now(UTC),
+        }
+
+        exported = web.get("/v1/account/export", headers=headers)
+        assert exported.status_code == 200
+        assert exported.headers["cache-control"] == "private, no-store"
+        assert exported.headers["content-disposition"] == (
+            'attachment; filename="ahoya-account-export.json"'
+        )
+        export_data = exported.json()
+        assert export_data["profile"]["date_of_birth"] == "1998-03-14"
+        assert export_data["profile"]["contact_email"] == "ash@example.com"
+        assert export_data["profile"]["phone_number"] == "+919876543210"
+        assert export_data["account"]["status"] == "active"
+        assert len(export_data["consents"]) == 2
+        assert export_data["consents"][0]["notice_version"] == "test-v1"
+        assert export_data["consents"][1]["notice_version"] == "test-v2"
+        assert export_data["consents"][1]["withdrawn_at"] == "2026-01-04T00:00:00+00:00"
+        serialized_export = json.dumps(export_data)
+        assert "google-subject-for-route-test" not in serialized_export
+        assert "another-google-subject" not in serialized_export
+        assert "Another Person" not in serialized_export
+        assert "another-user-notice" not in serialized_export
+        assert "dob_ciphertext" not in serialized_export
+        assert "contact_email_ciphertext" not in serialized_export
+        assert token not in serialized_export
 
         for email, remaining in (("ash2@example.com", 1), ("ash3@example.com", 0)):
             changed = web.patch(
@@ -338,6 +436,7 @@ def test_dob_collection_gate_allows_basic_profile_but_blocks_dob() -> None:
 
     with TestClient(app) as web:
         app.state.phase1_writes_ready = True
+        assert web.get("/v1/account/export").status_code == 401
         login = web.post(
             "/v1/auth/sessions",
             headers={"Authorization": f"Bearer {make_assertion(private_key)}"},
@@ -355,6 +454,11 @@ def test_dob_collection_gate_allows_basic_profile_but_blocks_dob() -> None:
         assert basic_profile.status_code == 200
         assert basic_profile.json()["profile"]["date_of_birth"] is None
         assert not mongo.database["consent_events"].documents
+        export = web.get("/v1/account/export", headers={"Authorization": f"Bearer {token}"})
+        assert export.status_code == 200
+        assert export.json()["profile"]["username"] == "profile_owner"
+        assert export.json()["profile"]["date_of_birth"] is None
+        assert export.json()["consents"] == []
 
         dob_profile = web.patch(
             "/v1/profiles/me",
@@ -369,3 +473,24 @@ def test_dob_collection_gate_allows_basic_profile_but_blocks_dob() -> None:
         assert dob_profile.status_code == 503
         stored = next(iter(mongo.database["profiles"].documents.values()))
         assert not any(key.startswith("dob_") for key in stored)
+
+
+def test_export_serializers_ignore_malformed_stored_values() -> None:
+    assert _timestamp("not-a-timestamp") is None
+    assert _history_timestamps("not-a-history") == []
+    assert _consent_export(
+        {
+            "purpose": object(),
+            "scope": "not-a-list",
+            "notice_version": object(),
+            "provider_terms_version": None,
+            "consented_at": "not-a-timestamp",
+        }
+    ) == {
+        "purpose": None,
+        "scope": [],
+        "notice_version": None,
+        "provider_terms_version": None,
+        "consented_at": None,
+        "withdrawn_at": None,
+    }
