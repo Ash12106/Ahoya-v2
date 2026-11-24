@@ -7,7 +7,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Any
+from typing import Any, Literal
 
 import jwt
 from cryptography.exceptions import InvalidTag
@@ -197,3 +197,58 @@ def decrypt_date_of_birth(document: dict[str, Any], user_id: str, settings: Sett
         return date.fromisoformat(plaintext.decode("ascii"))
     except (InvalidTag, ValueError, UnicodeDecodeError) as exc:
         raise ValueError("Stored date of birth is unavailable") from exc
+
+
+ContactField = Literal["contact_email", "phone_number"]
+
+
+def encrypt_profile_contact(
+    value: str, field: ContactField, user_id: str, settings: Settings
+) -> dict[str, str]:
+    """Encrypt a private contact value with owner- and field-bound AES-GCM data."""
+    keys = _pii_keys(settings)
+    key_id = settings.pii_encryption_active_key_id
+    key = keys.get(key_id)
+    if key is None:
+        raise ValueError("Active PII encryption key is unavailable")
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(key).encrypt(
+        nonce,
+        value.encode("utf-8"),
+        f"{user_id}:{field}".encode(),
+    )
+    return {
+        f"{field}_key_id": key_id,
+        f"{field}_nonce": base64.urlsafe_b64encode(nonce).decode("ascii"),
+        f"{field}_ciphertext": base64.urlsafe_b64encode(ciphertext).decode("ascii"),
+    }
+
+
+def decrypt_profile_contact(
+    document: dict[str, Any], field: ContactField, user_id: str, settings: Settings
+) -> str | None:
+    """Decrypt a private contact field, rejecting partial or invalid ciphertext."""
+    key_id = document.get(f"{field}_key_id")
+    nonce_value = document.get(f"{field}_nonce")
+    ciphertext_value = document.get(f"{field}_ciphertext")
+    if key_id is None and nonce_value is None and ciphertext_value is None:
+        return None
+    keys = _pii_keys(settings)
+    if (
+        not isinstance(key_id, str)
+        or not isinstance(nonce_value, str)
+        or not isinstance(ciphertext_value, str)
+        or key_id not in keys
+    ):
+        raise ValueError("Stored contact value is unavailable")
+    try:
+        nonce = base64.urlsafe_b64decode(nonce_value.encode("ascii"))
+        ciphertext = base64.urlsafe_b64decode(ciphertext_value.encode("ascii"))
+        plaintext = AESGCM(keys[key_id]).decrypt(
+            nonce,
+            ciphertext,
+            f"{user_id}:{field}".encode(),
+        )
+        return plaintext.decode("utf-8")
+    except (InvalidTag, ValueError, UnicodeDecodeError) as exc:
+        raise ValueError("Stored contact value is unavailable") from exc

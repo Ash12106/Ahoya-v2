@@ -97,6 +97,8 @@ class FakeCollection:
             self.documents[key] = document
         if document is not None:
             document.update(update.get("$set", {}))
+            for field in update.get("$unset", {}):
+                document.pop(field, None)
 
 
 class FakeDatabase:
@@ -239,16 +241,80 @@ def test_session_profile_consent_and_logout_use_server_side_state() -> None:
                 "display_name": "Profile Owner",
                 "date_of_birth": "1998-03-14",
                 "cover_alt_text": "",
+                "contact_email": "ash@example.com",
+                "phone_number": "+91 (98765) 43210",
             },
         )
         assert saved.status_code == 200
         assert saved.json()["profile"]["date_of_birth"] == "1998-03-14"
+        assert saved.json()["profile"]["contact_email"] == "ash@example.com"
+        assert saved.json()["profile"]["phone_number"] == "+919876543210"
+        assert saved.json()["contact_email_changes_remaining"] == 2
         profile_document = next(iter(mongo.database["profiles"].documents.values()))
         assert "1998-03-14" not in json.dumps(profile_document, default=str)
+        assert "ash@example.com" not in json.dumps(profile_document, default=str)
+        assert "+919876543210" not in json.dumps(profile_document, default=str)
         assert len(mongo.database["consent_events"].documents) == 1
 
         read_back = web.get("/v1/profiles/me", headers=headers)
         assert read_back.json()["profile"]["date_of_birth"] == "1998-03-14"
+        assert read_back.json()["profile"]["contact_email"] == "ash@example.com"
+        assert read_back.json()["profile"]["phone_number"] == "+919876543210"
+
+        for email, remaining in (("ash2@example.com", 1), ("ash3@example.com", 0)):
+            changed = web.patch(
+                "/v1/profiles/me",
+                headers=headers,
+                json={
+                    "username": "profile_owner",
+                    "display_name": "Profile Owner",
+                    "cover_alt_text": "",
+                    "contact_email": email,
+                },
+            )
+            assert changed.status_code == 200
+            assert changed.json()["contact_email_changes_remaining"] == remaining
+            assert changed.json()["profile"]["phone_number"] == "+919876543210"
+
+        limited = web.patch(
+            "/v1/profiles/me",
+            headers=headers,
+            json={
+                "username": "profile_owner",
+                "display_name": "Profile Owner",
+                "cover_alt_text": "",
+                "contact_email": "ash4@example.com",
+            },
+        )
+        assert limited.status_code == 429
+        assert limited.json()["code"] == "CONTACT_EMAIL_CHANGE_LIMIT"
+
+        cleared = web.patch(
+            "/v1/profiles/me",
+            headers=headers,
+            json={
+                "username": "profile_owner",
+                "display_name": "Profile Owner",
+                "cover_alt_text": "",
+                "contact_email": None,
+                "phone_number": None,
+            },
+        )
+        assert cleared.status_code == 200
+        assert cleared.json()["profile"]["contact_email"] is None
+        assert cleared.json()["profile"]["phone_number"] is None
+        profile_document = next(iter(mongo.database["profiles"].documents.values()))
+        assert not any(
+            key in profile_document
+            for key in (
+                "contact_email_key_id",
+                "contact_email_nonce",
+                "contact_email_ciphertext",
+                "phone_number_key_id",
+                "phone_number_nonce",
+                "phone_number_ciphertext",
+            )
+        )
         assert web.get("/v1/auth/me", headers=headers).json()["account"]["profile_complete"] is True
         assert (
             web.post(

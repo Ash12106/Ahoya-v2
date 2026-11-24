@@ -8,10 +8,13 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from app.auth.security import (
+    ContactField,
     InvalidAssertion,
     assertion_replay_hash,
     decrypt_date_of_birth,
+    decrypt_profile_contact,
     encrypt_date_of_birth,
+    encrypt_profile_contact,
     new_session_token,
     session_token_hash,
     verify_web_assertion,
@@ -108,6 +111,42 @@ def test_date_of_birth_is_encrypted_and_bound_to_the_owner() -> None:
         decrypt_date_of_birth(stored, "owner-two", settings)
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("contact_email", "ash@example.com"),
+        ("phone_number", "+919876543210"),
+    ],
+)
+def test_contact_details_are_encrypted_and_bound_to_owner_and_field(
+    field: ContactField, value: str
+) -> None:
+    settings, _ = make_settings()
+
+    stored = encrypt_profile_contact(value, field, "owner-one", settings)
+
+    assert value not in json.dumps(stored)
+    assert decrypt_profile_contact(stored, field, "owner-one", settings) == value
+    with pytest.raises(ValueError):
+        decrypt_profile_contact(stored, field, "owner-two", settings)
+    other_field: ContactField = "phone_number" if field == "contact_email" else "contact_email"
+    moved_ciphertext = {
+        f"{other_field}_{suffix}": stored[f"{field}_{suffix}"]
+        for suffix in ("key_id", "nonce", "ciphertext")
+    }
+    with pytest.raises(ValueError):
+        decrypt_profile_contact(moved_ciphertext, other_field, "owner-one", settings)
+
+
+def test_contact_encryption_fails_closed_without_a_key() -> None:
+    settings, _ = make_settings()
+    settings.pii_encryption_keys = ""
+    settings.pii_encryption_active_key_id = ""
+
+    with pytest.raises(ValueError):
+        encrypt_profile_contact("ash@example.com", "contact_email", "owner-one", settings)
+
+
 def test_session_tokens_are_random_and_only_hashes_are_stored() -> None:
     first = new_session_token()
     second = new_session_token()
@@ -149,6 +188,29 @@ def test_profile_input_allows_basic_profile_without_date_of_birth() -> None:
     )
 
     assert profile.date_of_birth is None
+
+
+def test_profile_contact_fields_are_normalized_and_validated() -> None:
+    profile = ProfileUpdate.model_validate(
+        {
+            "username": "Aashish",
+            "display_name": "Aashish",
+            "contact_email": " ash@Example.COM ",
+            "phone_number": "+91 (98765) 43210",
+        }
+    )
+
+    assert profile.contact_email == "ash@example.com"
+    assert profile.phone_number == "+919876543210"
+    for field, value in (
+        ("contact_email", "not-an-email"),
+        ("contact_email", "a..b@example.com"),
+        ("phone_number", "9876543210"),
+    ):
+        with pytest.raises(ValueError):
+            ProfileUpdate.model_validate(
+                {"username": "Aashish", "display_name": "Aashish", field: value}
+            )
 
 
 def test_consent_requires_supported_purpose_and_explicit_acceptance() -> None:

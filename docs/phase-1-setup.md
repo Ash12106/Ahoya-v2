@@ -65,7 +65,7 @@ DOB_COLLECTION_NOTICE_TEXT="replace_with_reviewed_notice_text"
 DOB_COLLECTION_ENABLED=true
 ```
 
-Generate a 32-byte key locally with `openssl rand -base64 32`. Keep encryption keys in the secret manager and preserve old keys while data encrypted with them remains. The application encrypts DOB with AES-256-GCM and refuses collection if the active key, notice version, or notice text is missing or invalid. Do not send the generated key or notice text to chat. A stored DOB remains personal data and must be included in the approved retention and deletion policy.
+Generate a 32-byte key locally with `openssl rand -base64 32`. Keep encryption keys in the secret manager and preserve old keys while data encrypted with them remains. The application uses the keyring for DOB and private contact details with AES-256-GCM; it refuses DOB collection if the active key, notice version, or notice text is missing or invalid. Do not send the generated key or notice text to chat. Stored personal data must be included in the approved retention and deletion policy.
 
 ## Local MongoDB transactions
 

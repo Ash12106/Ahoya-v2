@@ -59,6 +59,11 @@ async def http_error_handler(
             "USERNAME_CHANGE_LIMIT",
             "Usernames can be changed at most twice in a rolling seven-day period",
         )
+    if exc.status_code == 429 and exc.detail == "contact_email_change_limit":
+        code, message = (
+            "CONTACT_EMAIL_CHANGE_LIMIT",
+            "Contact email can be changed at most twice in a rolling seven-day period",
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content=error_body(code, message),

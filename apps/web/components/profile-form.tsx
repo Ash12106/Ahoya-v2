@@ -7,11 +7,14 @@ type Profile = {
   display_name: string;
   date_of_birth: string | null;
   cover_alt_text: string;
+  contact_email: string | null;
+  phone_number: string | null;
   updated_at: string | null;
 };
 
 type ProfileResponse = {
   profile: Profile | null;
+  contact_email_changes_remaining: number;
   date_of_birth_collection_enabled: boolean;
   minimum_age_years: number;
   date_of_birth_consent_notice: string | null;
@@ -30,6 +33,8 @@ function latestEligibleBirthDate(minimumAgeYears: number): string {
 export function ProfileForm() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [savedDateOfBirth, setSavedDateOfBirth] = useState("");
   const [coverAltText, setCoverAltText] = useState("");
@@ -53,6 +58,8 @@ export function ProfileForm() {
         if (data.profile) {
           setUsername(data.profile.username ?? "");
           setDisplayName(data.profile.display_name);
+          setContactEmail(data.profile.contact_email ?? "");
+          setPhoneNumber(data.profile.phone_number ?? "");
           const storedDate = data.profile.date_of_birth ?? "";
           setDateOfBirth(storedDate);
           setSavedDateOfBirth(storedDate);
@@ -102,6 +109,8 @@ export function ProfileForm() {
         body: JSON.stringify({
           username,
           display_name: displayName,
+          contact_email: contactEmail.trim() || null,
+          phone_number: phoneNumber.trim() || null,
           ...(collectionEnabled && dateOfBirth.length > 0 && !savedDateOfBirth
             ? { date_of_birth: dateOfBirth }
             : {}),
@@ -110,7 +119,9 @@ export function ProfileForm() {
       });
       if (!response.ok) {
         if (response.status === 409 || response.status === 429) {
-          const apiError = (await response.json().catch(() => null)) as { code?: string } | null;
+          const apiError = (await response.json().catch(() => null)) as
+            | { code?: string }
+            | null;
           if (apiError?.code === "USERNAME_UNAVAILABLE") {
             setError("That username is unavailable. Try another one.");
             return;
@@ -123,12 +134,30 @@ export function ProfileForm() {
             setError("You can change your username twice in seven days. Try again later.");
             return;
           }
+          if (apiError?.code === "CONTACT_EMAIL_CHANGE_LIMIT") {
+            setError("You can change your contact email twice in seven days. Try again later.");
+            return;
+          }
         }
         throw new Error("Your profile could not be saved. Check the fields and try again.");
       }
-      const data = (await response.json()) as { profile: Profile };
+      const data = (await response.json()) as {
+        profile: Profile;
+        contact_email_changes_remaining: number;
+      };
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              profile: data.profile,
+              contact_email_changes_remaining: data.contact_email_changes_remaining,
+            }
+          : current,
+      );
       setUsername(data.profile.username ?? "");
       setDisplayName(data.profile.display_name);
+      setContactEmail(data.profile.contact_email ?? "");
+      setPhoneNumber(data.profile.phone_number ?? "");
       const storedDate = data.profile.date_of_birth ?? "";
       setDateOfBirth(storedDate);
       setSavedDateOfBirth(storedDate);
@@ -146,16 +175,22 @@ export function ProfileForm() {
   const notice = settings?.date_of_birth_consent_notice;
 
   return (
-    <section className="w-full max-w-2xl rounded-2xl border border-[#dfe3e5] bg-white p-6 shadow-sm sm:p-9">
-      <div className="mb-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#a90000]">
-          Profile
+    <section
+      aria-labelledby="profile-heading"
+      className="profile-enter w-full max-w-3xl border border-[#d4d4d1] bg-[#f9f9f7] p-6 shadow-[0_24px_80px_-52px_rgba(0,0,0,0.45)] sm:p-10 lg:p-12"
+    >
+      <div className="mb-9 border-b border-[#d4d4d1] pb-8 sm:mb-11 sm:pb-10">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#a90000]">
+          Your space <span className="mx-2 text-[#888986]">/</span> Profile settings
         </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-          Set up your account
+        <h1
+          className="mt-5 max-w-xl font-serif text-4xl font-medium leading-[1.02] tracking-[-0.045em] sm:text-6xl"
+          id="profile-heading"
+        >
+          Make your profile yours.
         </h1>
-        <p className="mt-3 max-w-xl leading-7 text-[#59636a]">
-          Your profile is saved to Ahoya’s MongoDB database and is visible only to you in this phase.
+        <p className="mt-5 max-w-xl text-base leading-7 text-[#51534f] sm:text-lg sm:leading-8">
+          Your profile settings are private and saved to Ahoya’s MongoDB database.
         </p>
       </div>
 
@@ -180,7 +215,8 @@ export function ProfileForm() {
       ) : null}
 
       {settings ? (
-        <form className="mt-6 space-y-6" onSubmit={saveProfile}>
+        <form className="space-y-8" onSubmit={saveProfile}>
+          <div className="grid gap-6 sm:grid-cols-2">
           <div>
             <label className="mb-2 block text-sm font-medium" htmlFor="username">
               Username
@@ -188,7 +224,7 @@ export function ProfileForm() {
             <input
               autoCapitalize="none"
               autoComplete="username"
-              className="w-full rounded-lg border border-[#cfd4d5] px-4 py-3 text-base focus-visible:border-[#176b4b]"
+              className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
               id="username"
               maxLength={24}
               minLength={3}
@@ -210,13 +246,14 @@ export function ProfileForm() {
             </label>
             <input
               autoComplete="name"
-              className="w-full rounded-lg border border-[#cfd4d5] px-4 py-3 text-base focus-visible:border-[#176b4b]"
+              className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
               id="display-name"
               maxLength={80}
               onChange={(event) => setDisplayName(event.target.value)}
               required
               value={displayName}
             />
+          </div>
           </div>
 
           {collectionEnabled ? (
@@ -226,7 +263,7 @@ export function ProfileForm() {
               </label>
               <input
                 autoComplete="bday"
-                className="w-full rounded-lg border border-[#cfd4d5] px-4 py-3 text-base focus-visible:border-[#176b4b]"
+                className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
                 id="date-of-birth"
                 max={latestEligibleBirthDate(minimumAgeYears)}
                 onChange={(event) => setDateOfBirth(event.target.value)}
@@ -248,7 +285,7 @@ export function ProfileForm() {
               Cover image description
             </label>
             <input
-              className="w-full rounded-lg border border-[#cfd4d5] px-4 py-3 text-base focus-visible:border-[#176b4b]"
+              className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
               id="cover-alt-text"
               maxLength={250}
               onChange={(event) => setCoverAltText(event.target.value)}
@@ -259,8 +296,71 @@ export function ProfileForm() {
             </p>
           </div>
 
+          <div className="border-t border-[#d4d4d1] pt-7">
+            <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#a90000]">
+                  Private details
+                </p>
+                <h2 className="mt-2 font-serif text-2xl font-medium tracking-[-0.03em] sm:text-3xl">
+                  Contact information
+                </h2>
+              </div>
+              <p className="text-sm text-[#51534f]">
+                {settings?.contact_email_changes_remaining ?? 2} of 2 email changes available
+              </p>
+            </div>
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block text-sm font-medium" htmlFor="contact-email">
+                  Contact email
+                </label>
+                <input
+                  autoComplete="email"
+                  className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
+                  id="contact-email"
+                  maxLength={254}
+                  onChange={(event) => setContactEmail(event.target.value)}
+                  type="email"
+                  value={contactEmail}
+                />
+                <p className="mt-2 text-sm leading-6 text-[#51534f]">
+                  Private to you. No verification email is sent.
+                </p>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium" htmlFor="phone-number">
+                  Phone number
+                </label>
+                <input
+                  autoComplete="tel"
+                  className="w-full rounded-none border border-[#b9bbb7] bg-white px-4 py-3 text-base focus-visible:border-[#a90000]"
+                  id="phone-number"
+                  inputMode="tel"
+                  maxLength={32}
+                  onChange={(event) => setPhoneNumber(event.target.value)}
+                  type="tel"
+                  value={phoneNumber}
+                />
+                <p className="mt-2 text-sm leading-6 text-[#51534f]">
+                  Include + and your country code. It is private; no SMS is sent.
+                </p>
+              </div>
+            </div>
+            <p className="mt-5 text-xs leading-5 text-[#686a66]">
+              Both fields are optional. Clear a field and save to remove it from your profile.
+            </p>
+            <p className="mt-5 border-l-2 border-[#a90000] pl-4 text-sm leading-6 text-[#51534f]">
+              Ahoya uses Google sign-in. These contact details do not sign you in, link accounts,
+              or recover a password.
+            </p>
+            <p className="mt-2 text-xs leading-5 text-[#686a66]">
+              Contact email changes are limited to two in a rolling seven-day period.
+            </p>
+          </div>
+
           {collectionEnabled && notice ? (
-            <div className="rounded-xl border border-[#dfe3e5] bg-[#f8f9f9] p-5">
+            <div className="border border-[#d4d4d1] bg-white p-5">
               <h2 className="text-sm font-semibold">Date of birth privacy notice</h2>
               <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#414a4f]">{notice}</p>
             </div>
@@ -280,7 +380,7 @@ export function ProfileForm() {
           ) : null}
 
           <button
-            className="rounded-full bg-[#a90000] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#850000] disabled:cursor-wait disabled:bg-[#8d9295]"
+            className="rounded-none bg-[#a90000] px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#850000] disabled:cursor-wait disabled:bg-[#8d9295]"
             disabled={saving || (dateOfBirth !== savedDateOfBirth && dateOfBirth.length > 0 && !consent)}
             type="submit"
           >
