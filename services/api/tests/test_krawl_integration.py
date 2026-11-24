@@ -169,7 +169,7 @@ async def test_real_database_login_profile_encryption_replay_and_logout() -> Non
             assert empty_profile.json()["profile"] is None
             assert empty_profile.json()["date_of_birth_collection_enabled"] is True
 
-            basic_profile = web.patch(
+            missing_birth_date = web.patch(
                 "/v1/profiles/me",
                 headers=auth_headers,
                 json={
@@ -178,14 +178,25 @@ async def test_real_database_login_profile_encryption_replay_and_logout() -> Non
                     "cover_alt_text": "",
                 },
             )
-            assert basic_profile.status_code == 200
-            assert basic_profile.json()["profile"]["date_of_birth"] is None
-            without_dob = await observer[database_name]["profiles"].find_one(
-                {"user_id": user_id},
-                projection={"_id": 0},
+            assert missing_birth_date.status_code == 422
+            assert (
+                await observer[database_name]["profiles"].count_documents({"user_id": user_id}) == 0
             )
-            assert without_dob is not None
-            assert not any(key.startswith("dob_") for key in without_dob)
+
+            without_consent = web.patch(
+                "/v1/profiles/me",
+                headers=auth_headers,
+                json={
+                    "username": "test_person",
+                    "display_name": "Test Person",
+                    "date_of_birth": "2000-01-02",
+                    "cover_alt_text": "",
+                },
+            )
+            assert without_consent.status_code == 403
+            assert (
+                await observer[database_name]["profiles"].count_documents({"user_id": user_id}) == 0
+            )
 
             consent = web.post(
                 "/v1/consents",
@@ -209,6 +220,21 @@ async def test_real_database_login_profile_encryption_replay_and_logout() -> Non
             )
             assert saved.status_code == 200
             assert saved.json()["profile"]["date_of_birth"] == "2000-01-02"
+            changed_birth_date = web.patch(
+                "/v1/profiles/me",
+                headers=auth_headers,
+                json={
+                    "username": "test_person",
+                    "display_name": "Test Person",
+                    "date_of_birth": "2000-01-03",
+                    "cover_alt_text": "",
+                },
+            )
+            assert changed_birth_date.status_code == 409
+            assert (
+                web.get("/v1/profiles/me", headers=auth_headers).json()["profile"]["date_of_birth"]
+                == "2000-01-02"
+            )
             document = await observer[database_name]["profiles"].find_one(
                 {"user_id": user_id},
                 projection={"_id": 0},

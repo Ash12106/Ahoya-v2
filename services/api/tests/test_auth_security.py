@@ -22,10 +22,10 @@ from app.profiles.routes import ProfileUpdate
 
 
 def make_settings(
-    private_key: Ed25519PrivateKey | None = None,
+    signing_key: Ed25519PrivateKey | None = None,
     pii_key: bytes = b"k" * 32,
 ) -> tuple[Settings, Ed25519PrivateKey]:
-    signer = private_key or Ed25519PrivateKey.generate()
+    signer = signing_key or Ed25519PrivateKey.generate()
     public_der = signer.public_key().public_bytes(
         serialization.Encoding.DER,
         serialization.PublicFormat.SubjectPublicKeyInfo,
