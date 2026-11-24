@@ -84,7 +84,14 @@ After a push passes secret scanning, API and web checks, and container builds, G
 - `ghcr.io/ash12106/ahoya-v2-api`
 - `ghcr.io/ash12106/ahoya-v2-web`
 
-Each branch push receives a branch tag and a `sha-...` tag. The `latest` tag is updated only when the default branch passes CI. Pull requests and scheduled checks do not publish images. GHCR package visibility controls who can pull them; configure public visibility in the package settings if anonymous pulls are intended.
+Each branch push receives a branch tag and a `sha-...` tag. The `latest` tag is updated only when the default branch passes CI. Pull requests and scheduled checks do not publish images. GHCR package visibility controls who can pull the images; these packages are currently public.
+
+The current packages are public and can be pulled without logging in:
+
+```sh
+docker pull ghcr.io/ash12106/ahoya-v2-api:latest
+docker pull ghcr.io/ash12106/ahoya-v2-web:latest
+```
 
 See the [Phase 0 API contract](docs/api.md) for the verified liveness and MongoDB readiness routes.
 
