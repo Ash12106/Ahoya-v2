@@ -1,6 +1,6 @@
-# Phase 0 API contract
+# API contract
 
-The Phase 0 API exposes only the health routes required by the approved build plan. Product resources are intentionally absent until their schemas, authorization rules, and source-of-truth collections are defined.
+This page documents the Phase 0 health routes. Phase 1 authentication, profile, consent, and setup endpoints are documented in [Phase 1 local setup](phase-1-setup.md); their data is stored in the configured MongoDB database.
 
 All responses include `X-Request-ID`. Error responses use `code`, `message`, and `request_id`. MongoDB errors are logged by type and returned without connection details.
 
@@ -26,6 +26,6 @@ Success response:
 
 If MongoDB is unavailable, the route returns `503` with the standard error envelope and `DATABASE_UNAVAILABLE` code.
 
-## Product routes
+## Later product routes
 
-No member, profile, group, post, or message endpoint is exposed yet. Adding one requires an agreed MongoDB schema and server-side authorization. Runtime routes must read and write the configured database; test doubles are limited to the test suite.
+Group, post, and message endpoints are not exposed yet. Adding them requires an agreed MongoDB schema and server-side authorization. Runtime routes must read and write the configured database; test doubles are limited to the test suite.

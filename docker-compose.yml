@@ -4,15 +4,19 @@ services:
   mongo:
     image: mongo:7.0.48-jammy
     restart: unless-stopped
+    command: ["mongod", "--replSet", "ahoya-rs", "--keyFile", "/run/secrets/mongo-keyfile", "--bind_ip_all"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: ahoya
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-local-dev-password}
     volumes:
       - mongo_data:/data/db
+    secrets:
+      - mongo-keyfile
     healthcheck:
       test:
         - CMD-SHELL
-        - mongosh --quiet --username "$${MONGO_INITDB_ROOT_USERNAME}" --password "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "db.adminCommand('ping').ok" | grep 1
+        - >-
+          mongosh --quiet --username "$${MONGO_INITDB_ROOT_USERNAME}" --password "$${MONGO_INITDB_ROOT_PASSWORD}" --authenticationDatabase admin --eval "try { const state = rs.status(); print(state.members.some((member) => member.stateStr === 'PRIMARY') ? 'PRIMARY' : 'WAIT') } catch (error) { if (error.codeName === 'NotYetInitialized') { const result = rs.initiate({_id:'ahoya-rs',members:[{_id:0,host:'mongo:27017'}]}); } print('WAIT') }" | grep -q '^PRIMARY$'
       interval: 5s
       timeout: 5s
       retries: 20
@@ -32,10 +36,16 @@ services:
     restart: unless-stopped
     environment:
       APP_ENV: development
-      MONGODB_URI: "${MONGODB_URI:-mongodb://ahoya:${MONGO_ROOT_PASSWORD:-local-dev-password}@mongo:27017/ahoya?authSource=admin}"
+      MONGODB_URI: "${MONGODB_URI:-mongodb://ahoya:${MONGO_ROOT_PASSWORD:-local-dev-password}@mongo:27017/ahoya?authSource=admin&replicaSet=ahoya-rs}"
       DATABASE_NAME: ${DATABASE_NAME:-ahoya}
       KRAWL_HMAC_SECRET: ${KRAWL_HMAC_SECRET:-local-development-secret-change-before-any-shared-use}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      WEB_ASSERTION_PUBLIC_KEYS: ${WEB_ASSERTION_PUBLIC_KEYS:-}
+      PII_ENCRYPTION_KEYS: ${PII_ENCRYPTION_KEYS:-}
+      PII_ENCRYPTION_ACTIVE_KEY_ID: ${PII_ENCRYPTION_ACTIVE_KEY_ID:-}
+      DOB_COLLECTION_NOTICE_VERSION: ${DOB_COLLECTION_NOTICE_VERSION:-}
+      DOB_COLLECTION_NOTICE_TEXT: ${DOB_COLLECTION_NOTICE_TEXT:-}
+      DOB_COLLECTION_ENABLED: ${DOB_COLLECTION_ENABLED:-false}
     volumes:
       - ./services/api/app:/app/app:ro
     ports:
@@ -70,10 +80,20 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3000
+      AUTH_SECRET: ${AUTH_SECRET:-}
+      AUTH_GOOGLE_ID: ${AUTH_GOOGLE_ID:-}
+      AUTH_GOOGLE_SECRET: ${AUTH_GOOGLE_SECRET:-}
+      API_ASSERTION_PRIVATE_KEY: ${API_ASSERTION_PRIVATE_KEY:-}
+      API_ASSERTION_KEY_ID: ${API_ASSERTION_KEY_ID:-}
+      API_INTERNAL_ORIGIN: http://api:8000
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
     volumes:
       - ./apps/web/app:/app/app:ro
+      - ./apps/web/auth.ts:/app/auth.ts:ro
+      - ./apps/web/components:/app/components:ro
       - ./apps/web/public:/app/public:ro
       - ./apps/web/proxy.ts:/app/proxy.ts:ro
+      - ./apps/web/types:/app/types:ro
       - ./apps/web/next-env.d.ts:/app/next-env.d.ts:rw
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-3000}:3000"
@@ -100,3 +120,7 @@ services:
 
 volumes:
   mongo_data:
+
+secrets:
+  mongo-keyfile:
+    file: ./mongo-keyfile

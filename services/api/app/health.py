@@ -37,3 +37,18 @@ async def database_health(request: Request) -> dict[str, str] | JSONResponse:
             ),
         )
     return {"status": "ok", "request_id": request.state.request_id}
+
+
+@router.get("/health/phase1", response_model=None)
+async def phase1_health(request: Request) -> dict[str, str] | JSONResponse:
+    """Report whether the database has passed Phase 1's transaction preflight."""
+    if not getattr(request.app.state, "phase1_writes_ready", False):
+        return JSONResponse(
+            status_code=503,
+            content=error_body(
+                "SERVICE_UNAVAILABLE",
+                "Service temporarily unavailable",
+                request.state.request_id,
+            ),
+        )
+    return {"status": "ok", "request_id": request.state.request_id}

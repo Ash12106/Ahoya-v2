@@ -17,7 +17,8 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run start",
+    command:
+      "mkdir -p .next/standalone/public .next/standalone/.next/static && cp -R public/. .next/standalone/public/ && cp -R .next/static/. .next/standalone/.next/static/ && npm run start",
     url: `${baseURL}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

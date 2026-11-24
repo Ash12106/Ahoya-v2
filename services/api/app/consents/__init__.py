@@ -1,0 +1,1 @@
+"""Purpose-specific consent records."""

@@ -31,16 +31,6 @@ jobs:
   api:
     name: API quality and security
     runs-on: ubuntu-latest
-    services:
-      mongo:
-        image: mongo:7.0.48-jammy
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\").ok'"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 20
     steps:
       - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
       - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c
@@ -63,10 +53,34 @@ jobs:
       - name: Unit tests
         working-directory: services/api
         run: uv run pytest
+      - name: Start MongoDB 7 replica set
+        run: |
+          docker run --detach --name ahoya-ci-mongo \
+            --publish 27017:27017 \
+            mongo:7.0.48-jammy \
+            mongod --replSet rs0 --bind_ip_all
+
+          for attempt in $(seq 1 40); do
+            if docker exec ahoya-ci-mongo mongosh --quiet --eval 'db.adminCommand({ping: 1}).ok' >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          docker exec ahoya-ci-mongo mongosh --quiet --eval 'try { rs.status(); } catch (error) { if (error.codeName !== "NotYetInitialized") throw error; rs.initiate({_id: "rs0", members: [{_id: 0, host: "localhost:27017"}]}); }'
+
+          for attempt in $(seq 1 40); do
+            if docker exec ahoya-ci-mongo mongosh --quiet --eval 'try { const state = rs.status(); print(state.members.some((member) => member.stateStr === "PRIMARY") ? "PRIMARY" : "WAIT"); } catch (error) { print("WAIT"); }' | grep -q '^PRIMARY$'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MongoDB replica set did not become primary" >&2
+          exit 1
       - name: MongoDB integration tests
         working-directory: services/api
         env:
-          TEST_MONGODB_URI: mongodb://localhost:27017/ahoya_test
+          TEST_MONGODB_URI: mongodb://localhost:27017/ahoya_test?replicaSet=rs0
         run: uv run pytest -m integration -o addopts=""
       - name: Dependency audit
         working-directory: services/api
@@ -112,3 +126,55 @@ jobs:
           docker compose build api web
           docker build --file services/api/Dockerfile --target runtime --tag ahoya-api:ci .
           docker build --file apps/web/Dockerfile --target runner --tag ahoya-web:ci .
+
+  publish-images:
+    name: Publish ${{ matrix.component }} image
+    if: github.event_name == 'push'
+    needs: [secret-scan, api, web, containers]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            dockerfile: services/api/Dockerfile
+            target: runtime
+          - component: web
+            dockerfile: apps/web/Dockerfile
+            target: runner
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3
+      - name: Normalize image namespace
+        id: image-owner
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Generate image tags and labels
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9
+        with:
+          images: ghcr.io/${{ steps.image-owner.outputs.owner }}/ahoya-v2-${{ matrix.component }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+      - name: Build and publish image
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          target: ${{ matrix.target }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}

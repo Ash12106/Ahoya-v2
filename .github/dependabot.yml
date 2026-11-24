@@ -4,12 +4,11 @@ updates:
     directory: /apps/web
     schedule:
       interval: weekly
+    cooldown:
+      exclude:
+        - "@typescript-eslint/eslint-plugin"
   - package-ecosystem: uv
     directory: /services/api
-    schedule:
-      interval: weekly
-  - package-ecosystem: docker
-    directory: /
     schedule:
       interval: weekly
   - package-ecosystem: docker

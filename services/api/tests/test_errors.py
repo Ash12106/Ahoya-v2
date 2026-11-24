@@ -26,6 +26,23 @@ async def test_http_error_uses_a_generic_public_message() -> None:
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_error_preserves_retry_after_without_private_details() -> None:
+    response = await http_error_handler(
+        make_request(),
+        HTTPException(
+            status_code=429,
+            detail="private rate-limit state",
+            headers={"Retry-After": "12"},
+        ),
+    )
+
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == "12"
+    assert b"RATE_LIMITED" in response.body
+    assert b"private rate-limit state" not in response.body
+
+
+@pytest.mark.asyncio
 async def test_unexpected_error_hides_internal_details() -> None:
     response = await unexpected_error_handler(make_request(), RuntimeError("secret detail"))
 

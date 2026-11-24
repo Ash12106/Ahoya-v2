@@ -1,5 +1,7 @@
 """Validated application configuration."""
 
+import base64
+import json
 from ipaddress import ip_network
 from typing import Literal
 from urllib.parse import urlsplit
@@ -19,6 +21,12 @@ class Settings(BaseSettings):
     mongodb_uri: SecretStr
     database_name: str = "ahoya"
     krawl_hmac_secret: SecretStr
+    web_assertion_public_keys: str = ""
+    pii_encryption_keys: str = ""
+    pii_encryption_active_key_id: str = ""
+    dob_collection_notice_version: str = ""
+    dob_collection_notice_text: str = ""
+    dob_collection_enabled: bool = False
     cloudflare_origin_token: SecretStr | None = None
     trusted_proxy_cidrs: str = ""
     cors_allowed_origins: str = "http://localhost:3000"
@@ -99,6 +107,25 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        if self.dob_collection_enabled:
+            if (
+                not self.dob_collection_notice_version
+                or not self.dob_collection_notice_text
+                or len(self.dob_collection_notice_text) > 10000
+                or not self.pii_encryption_active_key_id
+                or not self.pii_encryption_keys
+            ):
+                raise ValueError(
+                    "DOB collection requires a reviewed notice and configured encryption key"
+                )
+            try:
+                keyring = json.loads(self.pii_encryption_keys)
+                active_key = keyring.get(self.pii_encryption_active_key_id)
+                decoded_key = base64.b64decode(active_key, validate=True)
+            except (AttributeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise ValueError("DOB collection encryption key configuration is invalid") from exc
+            if len(decoded_key) != 32:
+                raise ValueError("DOB collection encryption key must be 32 bytes")
         if self.app_env == "production":
             if not self.trusted_proxy_cidrs:
                 raise ValueError("TRUSTED_PROXY_CIDRS is required in production")

@@ -41,6 +41,8 @@ npm run dev
 
 The `.env.example` values are local-only placeholders. Replace them before sharing the environment. Never use them in deployment.
 
+For Phase 1 Google sign-in, API-session keys, DOB-consent gates, and the available account/profile endpoints, follow [Phase 1 local setup](docs/phase-1-setup.md). Real-person DOB collection is disabled until its notice and key configuration are approved.
+
 ## Verification
 
 API checks from `services/api`:
@@ -74,6 +76,15 @@ npm run test:e2e
 ## Production setup
 
 The Render blueprint intentionally leaves database credentials, secrets, proxy ranges, and CORS origins unset. Production API startup requires all of them. Follow [Cloudflare origin protection setup](docs/security/cloudflare-origin.md) before attaching public DNS or enabling production traffic. The blueprint uses free web-service plans and does not provision a database.
+
+## GitHub Actions images
+
+After a push passes secret scanning, API and web checks, and container builds, GitHub Actions publishes the production images to GitHub Container Registry:
+
+- `ghcr.io/ash12106/ahoya-v2-api`
+- `ghcr.io/ash12106/ahoya-v2-web`
+
+Each branch push receives a branch tag and a `sha-...` tag. The `latest` tag is updated only when the default branch passes CI. Pull requests and scheduled checks do not publish images. GHCR package visibility controls who can pull them; configure public visibility in the package settings if anonymous pulls are intended.
 
 See the [Phase 0 API contract](docs/api.md) for the verified liveness and MongoDB readiness routes.
 
